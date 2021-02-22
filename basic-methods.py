@@ -25,7 +25,7 @@ def read_and_annotate(path, threshhold):
 
     return df
 
-def percent_from_demographic(alpha, df_311, df_census):
+def P_alpha(alpha, df_311, df_census):
     '''
     method for finding P(A=alpha) from the paper, used in equation (7).
     estimates the percent of requests from a given demographic
@@ -46,7 +46,7 @@ def percent_from_demographic(alpha, df_311, df_census):
     def ratio_calc(row):
         total = row['B03002001 - count']
         if total == 0: return 0
-        return sum([row[a + ' - count'] for a in alpha]) / total
+        return sum([row[code + ' - count'] for code in alpha]) / total
 
     bg_ratios = df_311.apply(lambda row: ratio_calc(row), axis=1)
 
@@ -80,14 +80,53 @@ def mu(w, alpha, df_311, df_census):
     expectation = 0
     total_records = len(df_311)
     for z in Z:
-        w_result = w(alpha, 1, z)
+        w_result = w(alpha, 1, z, df_311, df_census)
 
         P_Yhat_Z = len(df_311.loc[df_311['BLOCK_GROUP'] == z].loc[df_311['LABEL'] == 1]) / total_records
 
         expectation += w_result * P_Yhat_Z
 
     # part 2. P(A = alpha) is handled by another function
-    P_A_equals_alpha = percent_from_demographic(alpha, df_311, df_census)
+    P_A_equals_alpha = P_alpha(alpha, df_311, df_census)
 
     return expectation / P_A_equals_alpha
 
+
+def P_alpha_given_z(alpha, z, df_census):
+    '''
+    calculates P(A=alpha|Z=z) as used in the definitions of w^L_alpha and w^U_alpha at the top of page 15 of the paper
+    :param alpha: demographic -- technically, a set of census codes
+    :param z: a block group
+    :param df_census: dataframe of census data 
+    :return: P(A=alpha | Z=z)
+    '''
+
+    # since alpha is a set of census codes we need to take the sum of census population counts over all of the codes (within the given block group), then divide that sum by the total population of the block group
+
+    alpha_population = sum([df_census.loc[z, code + ' - count'] for code in alpha])
+    total_population = df_census.loc[z, 'B03002001 - count'] # B03002001 is the census ocde for total population
+
+    # catch divide by 0 errors:
+    if total_population == 0: return 0
+    # else...
+    return alpha_population / total_population
+
+def P_y_hat_given_z(y_hat,z,df_311):
+    '''
+    calculates P(Y hat=y hat | Z=z) as used in the definitions of w^L_alpha and w^U_alpha at the top of page 15 of the paper
+    :param Y_hat: label
+    :param z: block group
+    :param df_311: dataframe of 311 data
+    :return: P(Y hat = y_hat | Z = z)
+    '''
+
+    # first slim down the dataset to all the records where Z=z
+    df_z = df_311.loc[df_311['BLOCK_GROUP'] == z]
+
+    # get the total number of records from this block group
+    total_records_from_z = len(df_z)
+
+    # catch a divide by 0 error
+    if total_records_from_z == 0: return 0
+    # else...
+    return len(df_z.loc[df_z['LABEL'] == y_hat]) / total_records_from_z
