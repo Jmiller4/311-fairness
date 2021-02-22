@@ -50,6 +50,44 @@ def percent_from_demographic(alpha, df_311, df_census):
 
     bg_ratios = df_311.apply(lambda row: ratio_calc(row), axis=1)
 
-    #now the dot product of bg_counts and bg_ratios should be the approx number of requests from the demographic alpha
+    #now the dot product of bg_counts and bg_ratios is the approx number of requests from the demographic alpha
 
     return bg_counts.dot(bg_ratios)
+
+def mu(w, alpha, df_311, df_census):
+    '''
+    implements the function mu(alpha; w) from eq. (7) of the paper
+    :param w: another function, called within mu
+    :param alpha: a demographic, and a parameter for w. expressed as a set of census codes.
+    :param df_311: dataframe of 311 data
+    :param df_census: dataframe of census data
+    :return: mu(alpha; w)
+    '''
+
+    # two parts: first, take the expectation of mu_alpha(Y hat, Z) * Y hat over all Y hat and Z
+    # then divide that by P(A = alpha)
+
+    # part 1.
+
+    # first, get a list of all Z (all block groups)
+
+    Z = list(df_311['BLOCK_GROUP'].value_counts().index)
+
+    # now, the expectation is the sum over all Y hat and Z of P(Y hat, Z) * (w_alpha(Y hat, Z) * Y hat)
+    # but since we're multiplying by Y hat at the end, that means that when Y hat = 0 we're guaranteed to not contribute anything to the sum
+    # so we really just need to sum over all Z, keeping Y hat fixed as 1.
+
+    expectation = 0
+    total_records = len(df_311)
+    for z in Z:
+        w_result = w(alpha, 1, z)
+
+        P_Yhat_Z = len(df_311.loc[df_311['BLOCK_GROUP'] == z].loc[df_311['LABEL'] == 1]) / total_records
+
+        expectation += w_result * P_Yhat_Z
+
+    # part 2. P(A = alpha) is handled by another function
+    P_A_equals_alpha = percent_from_demographic(alpha, df_311, df_census)
+
+    return expectation / P_A_equals_alpha
+
