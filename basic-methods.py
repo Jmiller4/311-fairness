@@ -10,7 +10,8 @@ def read_and_annotate(path, threshhold):
     reads in a CSV of 311 request data as dataframe, annotates it with a new column, 'LABEL'
     'LABEL' = 0 or 1 depending on if the request was completed in more than or less than the thresshold time
     (so 1 = quicker response)
-    and returns the dataframe
+    lastly, it returns the dataframe
+    
     :param path: filepath to read from
     :param threshhold: a number of seconds
     :return: a pandas dataframe
@@ -21,7 +22,7 @@ def read_and_annotate(path, threshhold):
              'PARENT_SR_NUMBER': np.str, 'SANITATION_DIVISION_DAYS': np.str,
              'BLOCK_GROUP': np.str}) #get a bunch of warnings unless you specify the datatype for these guys
 
-    df['LABEL'] = df.apply(lambda row: 1 if row['DELTA'] >= threshhold else 0, axis=1)
+    df['LABEL'] = df.apply(lambda row: 1 if row['DELTA'] <= threshhold else 0, axis=1)
 
     return df
 
@@ -29,6 +30,7 @@ def P_alpha(alpha, df_311, df_census):
     '''
     method for finding P(A=alpha) from the paper, used in equation (7).
     estimates the percent of requests from a given demographic
+    
     :param alpha: a *set* of census codes (not necessarily just one) describing the demographic group (i.e. {B03002003, B03002013} for hispanic and non-hispanic white people)
     :param df_311: the dataframe of 311 data to look through
     :param df_census: the dataframe of census data (called "demographics_table" in the box repository)
@@ -57,6 +59,7 @@ def P_alpha(alpha, df_311, df_census):
 def mu(w, alpha, df_311, df_census):
     '''
     implements the function mu(alpha; w) from eq. (7) of the paper
+    
     :param w: another function, called within mu
     :param alpha: a demographic, and a parameter for w. expressed as a set of census codes.
     :param df_311: dataframe of 311 data
@@ -95,6 +98,7 @@ def mu(w, alpha, df_311, df_census):
 def P_alpha_given_z(alpha, z, df_census):
     '''
     calculates P(A=alpha|Z=z) as used in the definitions of w^L_alpha and w^U_alpha at the top of page 15 of the paper
+    
     :param alpha: demographic -- technically, a set of census codes
     :param z: a block group
     :param df_census: dataframe of census data 
@@ -114,6 +118,7 @@ def P_alpha_given_z(alpha, z, df_census):
 def P_y_hat_given_z(y_hat,z,df_311):
     '''
     calculates P(Y hat=y hat | Z=z) as used in the definitions of w^L_alpha and w^U_alpha at the top of page 15 of the paper
+    
     :param Y_hat: label
     :param z: block group
     :param df_311: dataframe of 311 data
