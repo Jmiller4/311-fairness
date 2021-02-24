@@ -37,13 +37,11 @@ def P_alpha(alpha, df_311, df_census):
     :return: the estimated percent of 311 records from people of that demographic.
     '''
 
-
     # get a new vector indexed by block groups, containing the number of requests from each block group
-
     bg_counts = df_311['BLOCK_GROUP'].value_counts()
 
     # get a vector 'bg_ratios' decribing the % of people in each block group from the demographic in question
-    # B03002001 is the census count for total
+    # B03002001 is the census code for total population
 
     def ratio_calc(row):
         total = row['B03002001 - count']
@@ -52,8 +50,7 @@ def P_alpha(alpha, df_311, df_census):
 
     bg_ratios = df_311.apply(lambda row: ratio_calc(row), axis=1)
 
-    #now the dot product of bg_counts and bg_ratios is the approx number of requests from the demographic alpha
-
+    #now the dot product of bg_counts and bg_ratios should be the approx number of requests from the demographic alpha
     return bg_counts.dot(bg_ratios)
 
 def mu(w, alpha, df_311, df_census):
