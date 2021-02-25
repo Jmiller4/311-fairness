@@ -5,27 +5,6 @@ import numpy as np
 methods for implementing functions from https://arxiv.org/pdf/1906.00285.pdf
 '''
 
-def read_and_annotate(path, threshhold):
-    '''
-    reads in a CSV of 311 request data as dataframe, annotates it with a new column, 'LABEL'
-    'LABEL' = 0 or 1 depending on if the request was completed in more than or less than the thresshold time
-    (so 1 = quicker response)
-    lastly, it returns the dataframe
-    
-    :param path: filepath to read from
-    :param threshhold: a number of seconds
-    :return: a pandas dataframe
-    '''
-
-    df = pd.read_csv(path, index_col=0,     dtype = {'CITY': np.str, 'STATE': np.str, 'ZIP_CODE': np.str,
-             'STREET_NUMBER': np.str, 'LEGACY_SR_NUMBER': np.str,
-             'PARENT_SR_NUMBER': np.str, 'SANITATION_DIVISION_DAYS': np.str,
-             'BLOCK_GROUP': np.str}) #get a bunch of warnings unless you specify the datatype for these guys
-
-    df['LABEL'] = df.apply(lambda row: 1 if row['DELTA'] <= threshhold else 0, axis=1)
-
-    return df
-
 def P_alpha(alpha, df_311, df_census):
     '''
     method for finding P(A=alpha) from the paper, used in equation (7).
@@ -48,7 +27,16 @@ def P_alpha(alpha, df_311, df_census):
         if total == 0: return 0
         return sum([row[code + ' - count'] for code in alpha]) / total
 
-    bg_ratios = df_311.apply(lambda row: ratio_calc(row), axis=1)
+    bg_ratios = df_census.apply(lambda row: ratio_calc(row), axis=1)
+
+    # some block groups never appear in the 311 data, so bg_ratios has more elements than bg_counts
+    # accordingly, we need to get rid of the indices in bg_ratios that don't have a matching index in bg_counts
+    # (we need to do this because next we're going to take the dot product)
+    bgs_in_311 = set(bg_counts.index)
+    bgs_in_census = set(bg_ratios.index)
+    bgs_just_in_census = bgs_in_census.difference(bgs_in_311)
+    bg_ratios.drop(labels = list(bgs_just_in_census), inplace=True)
+
 
     #now the dot product of bg_counts and bg_ratios should be the approx number of requests from the demographic alpha
     return bg_counts.dot(bg_ratios)
@@ -104,8 +92,9 @@ def P_alpha_given_z(alpha, z, df_census):
 
     # since alpha is a set of census codes we need to take the sum of census population counts over all of the codes (within the given block group), then divide that sum by the total population of the block group
 
-    alpha_population = sum([df_census.loc[z, code + ' - count'] for code in alpha])
+    alpha_population = sum([df_census.loc[z, code + ' - count'] for code in list(alpha)])
     total_population = df_census.loc[z, 'B03002001 - count'] # B03002001 is the census ocde for total population
+
 
     # catch divide by 0 errors:
     if total_population == 0: return 0
@@ -134,14 +123,130 @@ def P_y_hat_given_z(y_hat,z,df_311):
     return len(df_z.loc[df_z['LABEL'] == y_hat]) / total_records_from_z
 
 def w_L(alpha, y_hat, z, df_311, df_census):
-    ratio = (P_alpha_given_z(alpha, z, df_census) - 1)/ P_y_hat_given_z(y_hat, z, df_311)
-    return max(0, 1 + ratio)
+
+    numerator = P_alpha_given_z(alpha, z, df_census) - 1
+    denominator = P_y_hat_given_z(y_hat, z, df_311)
+
+    # first we need to catch the divide by zero error
+    if denominator == 0: return 0
+    # if the denominator is 0, it doesn't matter what we return, because if P(y hat | z) is 0 then P(y hat, z) is also zero, meaning that what we return here won't contribute at all to the expectation that mu is calculating anyhow.
+
+    return max(0, 1 + numerator/ denominator)
+
+    #ratio = (P_alpha_given_z(alpha, z, df_census) - 1)/ P_y_hat_given_z(y_hat, z, df_311)
+    #return max(0, 1 + ratio)
 
 def w_U(alpha, y_hat, z, df_311, df_census):
-    ratio = P_alpha_given_z(alpha, z, df_311) / P_y_hat_given_z(y_hat, z, df_311)
-    return min(1, ratio)
+    numerator = P_alpha_given_z(alpha, z, df_census)
+    denominator = P_y_hat_given_z(y_hat, z, df_311)
+
+    # first we need to catch the divide by zero error
+    if denominator == 0: return 0
+    # if the denominator is 0, it doesn't matter what we return, because if P(y hat | z) is zero then P(y hat, z) is also zero, meaning that what we return here won't contribute at all to the expectation that mu is calculating anyhow.
+
+    return min(1, numerator / denominator)
 
 def Delta(a, b, df_311, df_census):
+
+    # p_a = P_alpha(a, df_311, df_census)
+    # p_b = 1 - p_a
+
+
     lower_bound = mu(w_L, a, df_311, df_census) - mu(w_U, b, df_311, df_census)
     upper_bound = mu(w_U, a, df_311, df_census) - mu(w_L, b, df_311, df_census)
     return lower_bound, upper_bound
+
+'''
+methods for creating the dataframes and calling the above functions appropriately
+'''
+
+def read_and_annotate_311(path, threshhold):
+    '''
+    reads in a CSV of 311 request data as dataframe, annotates it with a new column, 'LABEL'
+    'LABEL' = 0 or 1 depending on if the request was completed in more than or less than the thresshold time
+    (so 1 = quicker response)
+    lastly, it returns the dataframe
+
+    :param path: filepath to read from
+    :param threshhold: a number of seconds
+    :return: a pandas dataframe
+    '''
+
+    df = pd.read_csv(path, index_col=0, dtype={'CITY': np.str, 'STATE': np.str, 'ZIP_CODE': np.str,
+                                               'STREET_NUMBER': np.str, 'LEGACY_SR_NUMBER': np.str,
+                                               'PARENT_SR_NUMBER': np.str, 'SANITATION_DIVISION_DAYS': np.str,
+                                               'BLOCK_GROUP': np.str})  # get a bunch of warnings unless you specify the datatype for these guys
+
+    df['LABEL'] = df.apply(lambda row: 1 if row['DELTA'] <= threshhold else 0, axis=1)
+
+    return df
+
+def read_census(path):
+    '''
+    just reads in the census data as a dataframe
+    the only special thing going on here is that we need to make sure the first column of the csv is read in as the index for the dataframe
+    :param path: path to the census data as a csv
+    :return: dataframe
+    '''
+    df = pd.read_csv(path, index_col=0,)
+    df.set_index(df.index.astype(str), drop=False, inplace=True) # the 311 data has block groups as strings, not ints -- the conversion here makes things easier
+    return df
+
+
+df_311 = read_and_annotate_311('311-by-request/311_GRAF.csv', 3*60*60*24)
+df_census = read_census('demographics_table.csv')
+
+print('finished reading csvs')
+
+
+# a is the advantaged group in the paper
+a = {'B03002003'}
+
+#     {
+# 'B03002003',
+# 'B03002005',
+# 'B03002006',
+# 'B03002007',
+# 'B03002008',
+# 'B03002009',
+# 'B03002010',
+# 'B03002011',
+# 'B03002013',
+# 'B03002015',
+# 'B03002016',
+# 'B03002017',
+# 'B03002018',
+# 'B03002019',
+# 'B03002020',
+# 'B03002021'
+# }
+b = {'B03002004','B03002014'}
+
+low, up = Delta(a,b,df_311, df_census)
+
+print(low)
+print(up)
+
+'''
+B03002001,Total
+B03002002,Total Not Hispanic or Latino
+B03002003,Not Hispanic or Latino - White alone
+B03002004,Not Hispanic or Latino - Black or African American alone
+B03002005,Not Hispanic or Latino - American Indian and Alaska Native alone
+B03002006,Not Hispanic or Latino - Asian alone
+B03002007,Not Hispanic or Latino - Native Hawaiian and Other Pacific Islander alone
+B03002008,Not Hispanic or Latino - Some other race alone
+B03002009,Not Hispanic or Latino - Total two or more races
+B03002010,Not Hispanic or Latino - Two races including Some other race
+B03002011,Not Hispanic or Latino - Two races excluding Some other race and three or more races
+B03002012,Total Hispanic or Latino
+B03002013,Hispanic or Latino - White alone
+B03002014,Hispanic or Latino - Black or African American alone
+B03002015,Hispanic or Latino - American Indian and Alaska Native alone
+B03002016,Hispanic or Latino - Asian alone
+B03002017,Hispanic or Latino - Native Hawaiian and Other Pacific Islander alone
+B03002018,Hispanic or Latino - Some other race alone
+B03002019,Hispanic or Latino - Total two or more races
+B03002020,Hispanic or Latino - Two races including Some other race
+B03002021,Hispanic or Latino - Two races excluding Some other race and three or more races
+'''
