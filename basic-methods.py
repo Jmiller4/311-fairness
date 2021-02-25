@@ -132,3 +132,16 @@ def P_y_hat_given_z(y_hat,z,df_311):
     if total_records_from_z == 0: return 0
     # else...
     return len(df_z.loc[df_z['LABEL'] == y_hat]) / total_records_from_z
+
+def w_L(alpha, y_hat, z, df_311, df_census):
+    ratio = (P_alpha_given_z(alpha, z, df_census) - 1)/ P_y_hat_given_z(y_hat, z, df_311)
+    return max(0, 1 + ratio)
+
+def w_U(alpha, y_hat, z, df_311, df_census):
+    ratio = P_alpha_given_z(alpha, z, df_311) / P_y_hat_given_z(y_hat, z, df_311)
+    return min(1, ratio)
+
+def Delta(a, b, df_311, df_census):
+    lower_bound = mu(w_L, a, df_311, df_census) - mu(w_U, b, df_311, df_census)
+    upper_bound = mu(w_U, a, df_311, df_census) - mu(w_L, b, df_311, df_census)
+    return lower_bound, upper_bound
