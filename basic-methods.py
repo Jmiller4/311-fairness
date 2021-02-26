@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
 '''
 methods for implementing functions from https://arxiv.org/pdf/1906.00285.pdf
@@ -9,7 +10,7 @@ def P_alpha(alpha, df_311, df_census):
     '''
     method for finding P(A=alpha) from the paper, used in equation (7).
     estimates the percent of requests from a given demographic
-    
+
     :param alpha: a *set* of census codes (not necessarily just one) describing the demographic group (i.e. {B03002003, B03002013} for hispanic and non-hispanic white people)
     :param df_311: the dataframe of 311 data to look through
     :param df_census: the dataframe of census data (called "demographics_table" in the box repository)
@@ -44,7 +45,7 @@ def P_alpha(alpha, df_311, df_census):
 def mu(w, alpha, df_311, df_census):
     '''
     implements the function mu(alpha; w) from eq. (7) of the paper
-    
+
     :param w: another function, called within mu
     :param alpha: a demographic, and a parameter for w. expressed as a set of census codes.
     :param df_311: dataframe of 311 data
@@ -83,10 +84,10 @@ def mu(w, alpha, df_311, df_census):
 def P_alpha_given_z(alpha, z, df_census):
     '''
     calculates P(A=alpha|Z=z) as used in the definitions of w^L_alpha and w^U_alpha at the top of page 15 of the paper
-    
+
     :param alpha: demographic -- technically, a set of census codes
     :param z: a block group
-    :param df_census: dataframe of census data 
+    :param df_census: dataframe of census data
     :return: P(A=alpha | Z=z)
     '''
 
@@ -104,7 +105,7 @@ def P_alpha_given_z(alpha, z, df_census):
 def P_y_hat_given_z(y_hat,z,df_311):
     '''
     calculates P(Y hat=y hat | Z=z) as used in the definitions of w^L_alpha and w^U_alpha at the top of page 15 of the paper
-    
+
     :param Y_hat: label
     :param z: block group
     :param df_311: dataframe of 311 data
@@ -193,39 +194,58 @@ def read_census(path):
     return df
 
 
-df_311 = read_and_annotate_311('311-by-request/311_GRAF.csv', 3*60*60*24)
-df_census = read_census('demographics_table.csv')
-
-print('finished reading csvs')
-
-
 # a is the advantaged group in the paper
 a = {'B03002003'}
 
-#     {
-# 'B03002003',
-# 'B03002005',
-# 'B03002006',
-# 'B03002007',
-# 'B03002008',
-# 'B03002009',
-# 'B03002010',
-# 'B03002011',
-# 'B03002013',
-# 'B03002015',
-# 'B03002016',
-# 'B03002017',
-# 'B03002018',
-# 'B03002019',
-# 'B03002020',
-# 'B03002021'
-# }
+a =  {
+'B03002003',
+'B03002005',
+'B03002006',
+'B03002007',
+'B03002008',
+'B03002009',
+'B03002010',
+'B03002011',
+'B03002013',
+'B03002015',
+'B03002016',
+'B03002017',
+'B03002018',
+'B03002019',
+'B03002020',
+'B03002021'
+}
 b = {'B03002004','B03002014'}
 
-low, up = Delta(a,b,df_311, df_census)
 
-print(low)
-print(up)
+lower_bounds = []
+upper_bounds = []
+days = [a/2 for a in range(60)]
+
+df_census = read_census('demographics_table.csv')
+results = pd.DataFrame(columns=['day','lower bound','upper bound'])
+
+for d in days:
+    print(d)
+    df_311 = read_and_annotate_311('311-by-request/311_SCQ.csv', d*60*60*24)
+    low, up = Delta(a, b, df_311, df_census)
+    lower_bounds.append(low)
+    upper_bounds.append(up)
+    new_row = {'day':d, 'lower bound':low, 'upper bound':up}
+    results = results.append(new_row, ignore_index=True)
+
+results.to_csv('results.csv')
+
+fig, ax = plt.subplots()
+
+ax.plot(days, lower_bounds, label='lower bound on unfairness', color='b')
+ax.plot(days, upper_bounds, label='upper bound on unfairness', color='r')
+ax.legend()
+plt.title('Fairness bounds for yard waste pick-up requests')
+plt.xlabel('Response time threshold in days')
+plt.ylabel('P(Y=1|A=a) - P(Y=1|A=b)')
+plt.savefig('')
+plt.show()
 
 '''
 B03002001,Total
