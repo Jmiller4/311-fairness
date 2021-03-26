@@ -17,10 +17,16 @@ def P_alpha(alpha, df_311, df_census):
     :return: the estimated percent of 311 records from people of that demographic.
     '''
 
-    # get a new vector indexed by block groups, containing the number of requests from each block group
-    bg_counts = df_311['BLOCK_GROUP'].value_counts()
+    #per mesrob's advice, calculate P(Z=z) from 311 data, calculate P(A=a|Z=z) from census data.
 
-    # get a vector 'bg_ratios' decribing the % of people in each block group from the demographic in question
+    # get a new vector indexed by block groups, containing the number of requests from each block group
+    request_counts_by_bg = df_311['BLOCK_GROUP'].value_counts()
+
+    total_requests = request_counts_by_bg.sum()
+
+    p_z_vector = request_counts_by_bg.apply(lambda request_count: request_count / total_requests)
+
+    # get a vector 'p_a_given_z_vector' decribing the % of people in each block group from the demographic in question
     # B03002001 is the census code for total population
 
     def ratio_calc(row):
@@ -28,19 +34,20 @@ def P_alpha(alpha, df_311, df_census):
         if total == 0: return 0
         return sum([row[code + ' - count'] for code in alpha]) / total
 
-    bg_ratios = df_census.apply(lambda row: ratio_calc(row), axis=1)
 
-    # some block groups never appear in the 311 data, so bg_ratios has more elements than bg_counts
-    # accordingly, we need to get rid of the indices in bg_ratios that don't have a matching index in bg_counts
+    p_a_given_z_vector = df_census.apply(lambda row: ratio_calc(row), axis=1)
+
+    # some block groups never appear in the 311 data, so p_a_given_z_vector has more elements than p_z_vector
+    # accordingly, we need to get rid of the indices in p_a_given_z_vector that don't have a matching index in p_z_vector
     # (we need to do this because next we're going to take the dot product)
-    bgs_in_311 = set(bg_counts.index)
-    bgs_in_census = set(bg_ratios.index)
+    bgs_in_311 = set(p_z_vector.index)
+    bgs_in_census = set(p_a_given_z_vector.index)
     bgs_just_in_census = bgs_in_census.difference(bgs_in_311)
-    bg_ratios.drop(labels = list(bgs_just_in_census), inplace=True)
+    p_a_given_z_vector.drop(labels = list(bgs_just_in_census), inplace=True)
 
 
     #now the dot product of bg_counts and bg_ratios should be the approx number of requests from the demographic alpha
-    return bg_counts.dot(bg_ratios)
+    return p_z_vector.dot(p_a_given_z_vector)
 
 def mu(w, alpha, df_311, df_census):
     '''
@@ -195,7 +202,8 @@ def read_census(path):
 
 
 # a is the advantaged group in the paper
-a = {'B03002003'}
+
+#a = {'B03002003'}
 
 a =  {
 'B03002003',
@@ -220,7 +228,8 @@ b = {'B03002004','B03002014'}
 
 lower_bounds = []
 upper_bounds = []
-days = [a/2 for a in range(60)]
+#days = [a/2 for a in range(60)]
+days = range(30)
 
 df_census = read_census('demographics_table.csv')
 results = pd.DataFrame(columns=['day','lower bound','upper bound'])
@@ -234,7 +243,7 @@ for d in days:
     new_row = {'day':d, 'lower bound':low, 'upper bound':up}
     results = results.append(new_row, ignore_index=True)
 
-results.to_csv('results.csv')
+results.to_csv('results1.csv')
 
 fig, ax = plt.subplots()
 
